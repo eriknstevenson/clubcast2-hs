@@ -22,4 +22,5 @@ executable clubcast2-hs
                      , http-conduit
                      , tagsoup
                      , text
+                     , time
                      , transformers

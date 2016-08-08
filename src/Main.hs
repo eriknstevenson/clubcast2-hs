@@ -5,23 +5,27 @@ import           Control.Monad.IO.Class
 import qualified Data.ByteString.Lazy.Char8 as LBS
 import           Data.Text (Text)
 import qualified Data.Text as T
+import           Data.Time.Clock
 import           Data.Monoid
 import           Network.HTTP.Simple
 import           Text.HTML.TagSoup
 
 
 data Podcast = Podcast
-  { podcastTitle :: Text
-  , description :: Text
-  , artURL :: Maybe Text
+  { podcastArtist :: Text
+  , podcastEpisodes :: [Episode]
+  , podcastImage :: Maybe Text
+  , podcastSummary :: Text
+  , podcastTitle :: Text
   } deriving (Show)
 
 data Episode = Episode
   { episodeTitle :: Text
-  , date :: Text
-  , summary :: Text
-  , mediaURL :: Text
-  , imageURL :: Maybe Text
+  , episodeAuthor :: Text
+  , episodeDate :: Text
+  , episodeDuration :: DiffTime
+  , episodeImage :: Maybe Text
+  , episodeURL :: Text
   } deriving (Show)
 
 data ClubCastException
@@ -64,8 +68,8 @@ haskellLastModifiedDateTime = do
     test =
       concatMap show . take 2 . dropWhile (~/= "<li id=lastmod>")
 
-getPodcastInfo :: IO ()
-getPodcastInfo =
+getPodcast :: IO ()
+getPodcast =
   LBS.unpack <$> openURL "http://www.galexmusic.com/podcast/gareth.xml"
   >>= return . parseTags
   >>= mapM_ (putStrLn . show)
