@@ -1,15 +1,19 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 module Main where
 
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
+import           Data.Aeson
 import qualified Data.ByteString.Lazy.Char8 as LBS
+import           Data.Default
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Time.Clock
 import           Data.Monoid
+import           GHC.Generics
 import           Network.HTTP.Simple
 import           Text.HTML.TagSoup
-
 
 data Podcast = Podcast
   { podcastArtist :: Text
@@ -17,16 +21,33 @@ data Podcast = Podcast
   , podcastImage :: Maybe Text
   , podcastSummary :: Text
   , podcastTitle :: Text
-  } deriving (Show)
+  } deriving (Show, Generic)
+
+instance ToJSON Podcast
 
 data Episode = Episode
   { episodeTitle :: Text
   , episodeAuthor :: Text
   , episodeDate :: Text
-  , episodeDuration :: DiffTime
+  , episodeDuration :: Text
   , episodeImage :: Maybe Text
   , episodeURL :: Text
-  } deriving (Show)
+  , episodeDescription :: Text
+  , episodeGuid :: Text
+  } deriving (Show, Generic)
+
+instance ToJSON Episode
+
+instance Default Episode where
+  def = Episode { episodeTitle = T.pack ""
+                , episodeAuthor = T.pack ""
+                , episodeDate = T.pack ""
+                , episodeDuration = T.pack ""
+                , episodeImage = Just $ T.pack ""
+                , episodeURL = T.pack ""
+                , episodeDescription = T.pack ""
+                , episodeGuid = T.pack ""
+                }
 
 data ClubCastException
   = BadResponse Int
@@ -69,14 +90,32 @@ haskellLastModifiedDateTime = do
       concatMap show . take 2 . dropWhile (~/= "<li id=lastmod>")
 
 getPodcast :: IO ()
-getPodcast =
-  LBS.unpack <$> openURL "http://www.galexmusic.com/podcast/gareth.xml"
-  >>= return . parseTags
-  >>= mapM_ (putStrLn . show)
+getPodcast = do
+  resp <- LBS.unpack <$> openURL "http://www.galexmusic.com/podcast/gareth.xml"
+  let tags = parseTags resp
+      items = getItems tags
+      episodes = map getEpisode items
+  mapM_ print episodes
   where
-    getEpisodes = undefined
+    getItems = 
+      map (takeWhile (~/= TagClose "item") . tail) . sections (~== TagOpen "item" [])
+    getEpisode :: [Tag String] -> Episode
+    getEpisode tags =
+      def
+        { episodeTitle = getTitle tags
+        , episodeAuthor = getAuthor tags
+        , episodeDate = getDate tags
+        , episodeGuid = getGuid tags
+        }
+    getTitle = getProperty "title" 
+    getAuthor = getProperty "itunes:author"
+    getGuid = getProperty "guid"
+    getDate = getProperty "pubDate" 
 
+getProperty :: String -> [Tag String] -> Text
+getProperty field = 
+  T.pack . fromTagText . head . tail . dropWhile (~/= TagOpen field [])
+    
 main :: IO ()
-main = do
-  putStrLn "hello world"
+main = getPodcast
 
