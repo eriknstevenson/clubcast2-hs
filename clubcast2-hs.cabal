@@ -23,6 +23,7 @@ executable clubcast2-hs
                      , data-default
                      , exceptions
                      , http-conduit
+                     , safe
                      , tagsoup
                      , text
                      , time

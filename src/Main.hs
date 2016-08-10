@@ -1,19 +1,27 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Main where
 
+import           Control.Monad
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
 import           Data.Aeson
 import qualified Data.ByteString.Lazy.Char8 as LBS
 import           Data.Default
+import           Data.Maybe
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Time.Clock
 import           Data.Monoid
 import           GHC.Generics
 import           Network.HTTP.Simple
+import           Safe
 import           Text.HTML.TagSoup
+
+data Output = Output { podcasts :: [Podcast] } deriving (Show, Generic)
+
+instance ToJSON Output
 
 data Podcast = Podcast
   { podcastArtist :: Text
@@ -23,31 +31,57 @@ data Podcast = Podcast
   , podcastTitle :: Text
   } deriving (Show, Generic)
 
-instance ToJSON Podcast
+instance Default Podcast where
+  def = Podcast 
+    { podcastArtist = ""
+    , podcastEpisodes = []
+    , podcastImage = Nothing
+    , podcastSummary = ""
+    , podcastTitle = ""
+    }
+
+instance ToJSON Podcast where
+  toJSON o = object [ "title" .= podcastTitle o
+                    , "artist" .= podcastArtist o
+                    , "image" .= podcastImage o
+                    , "summary" .= podcastSummary o
+                    , "episodes" .= podcastEpisodes o
+                    ]
 
 data Episode = Episode
   { episodeTitle :: Text
   , episodeAuthor :: Text
   , episodeDate :: Text
-  , episodeDuration :: Text
+  , episodeDuration :: NominalDiffTime
   , episodeImage :: Maybe Text
   , episodeURL :: Text
   , episodeDescription :: Text
   , episodeGuid :: Text
   } deriving (Show, Generic)
 
-instance ToJSON Episode
+instance ToJSON Episode where
+  toJSON o = object [ "title" .= episodeTitle o
+                    , "author" .= episodeAuthor o
+                    , "date" .= episodeDate o
+                    , "duration" .= episodeDuration o 
+                    , "image" .= episodeImage o
+                    , "url" .= episodeURL o
+                    , "description" .= episodeDescription o
+                    , "guid" .= episodeGuid o
+                    ]
 
+--TODO: Use OverloadedStrings extension
 instance Default Episode where
-  def = Episode { episodeTitle = T.pack ""
-                , episodeAuthor = T.pack ""
-                , episodeDate = T.pack ""
-                , episodeDuration = T.pack ""
-                , episodeImage = Just $ T.pack ""
-                , episodeURL = T.pack ""
-                , episodeDescription = T.pack ""
-                , episodeGuid = T.pack ""
-                }
+  def = Episode 
+    { episodeTitle = ""
+    , episodeAuthor = ""
+    , episodeDate = ""
+    , episodeDuration = 0
+    , episodeImage = Nothing 
+    , episodeURL = ""
+    , episodeDescription = ""
+    , episodeGuid = ""
+    }
 
 data ClubCastException
   = BadResponse Int
@@ -78,44 +112,38 @@ buildRequest :: (MonadCatch m) => String -> m Request
 buildRequest url =
   catchAll (parseRequest url) (\_ -> throwM $ BadURL url)
 
-haskellLastModifiedDateTime :: IO ()
-haskellLastModifiedDateTime = do
-  src <- LBS.unpack <$> openURL "http://wiki.haskell.org/Haskell"
-  let lastModifiedDateTime = test $ parseTags src
-  putStrLn $ "wiki last updated: " <> lastModifiedDateTime
-  where
-    fromFooter =
-      unwords . drop 6 . words. innerText . take 2 . dropWhile (~/= "<li id=lastmod>")
-    test =
-      concatMap show . take 2 . dropWhile (~/= "<li id=lastmod>")
-
-getPodcast :: IO ()
-getPodcast = do
-  resp <- LBS.unpack <$> openURL "http://www.galexmusic.com/podcast/gareth.xml"
+getPodcast :: String -> IO Podcast
+getPodcast url = do
+  resp <- LBS.unpack <$> openURL url
   let tags = parseTags resp
-      items = getItems tags
-      episodes = map getEpisode items
-  mapM_ print episodes
+      episodes = map getEpisode (getItems tags)
+  return $ def {podcastEpisodes = episodes}
   where
-    getItems = 
-      map (takeWhile (~/= TagClose "item") . tail) . sections (~== TagOpen "item" [])
+    groupOf :: String -> [Tag String] -> [[Tag String]]
+    groupOf str =
+      map (takeWhile (~/= TagClose str) . tail) . sections (~== TagOpen str [])
+   
+    getItems = groupOf "item"
+    
     getEpisode :: [Tag String] -> Episode
-    getEpisode tags =
-      def
-        { episodeTitle = getTitle tags
-        , episodeAuthor = getAuthor tags
-        , episodeDate = getDate tags
-        , episodeGuid = getGuid tags
-        }
-    getTitle = getProperty "title" 
-    getAuthor = getProperty "itunes:author"
-    getGuid = getProperty "guid"
-    getDate = getProperty "pubDate" 
+    getEpisode tags = def
+      { episodeTitle = fromMaybe "" $ getProperty "title" tags
+      , episodeAuthor = fromMaybe "" $ getProperty "itunes:author" tags
+      , episodeDate = fromMaybe "" $ getProperty "pubDate" tags
+      , episodeGuid = fromMaybe "" $ getProperty "guide" tags
+      }
 
-getProperty :: String -> [Tag String] -> Text
+getProperty :: String -> [Tag String] -> Maybe Text
 getProperty field = 
-  T.pack . fromTagText . head . tail . dropWhile (~/= TagOpen field [])
+  fmap T.pack . maybeTagText <=< headMay <=< tailMay . dropWhile (~/= TagOpen field [])
     
 main :: IO ()
-main = getPodcast
+main = do
+  output <- mapM getPodcast [electricForLife, hardwellOnAir]
+  LBS.writeFile "output/data.json" $ encode output
 
+electricForLife :: String
+electricForLife = "http://www.galexmusic.com/podcast/gareth.xml"
+
+hardwellOnAir :: String
+hardwellOnAir = "http://podcast.djhardwell.com/podcast.xml"
