@@ -72,7 +72,6 @@ instance ToJSON Episode where
                     , "guid" .= episodeGuid o
                     ]
 
---TODO: Use OverloadedStrings extension
 instance Default Episode where
   def = Episode 
     { episodeTitle = Nothing
@@ -118,51 +117,57 @@ getPodcast :: String -> IO Podcast
 getPodcast url = do
   resp <- LBS.unpack <$> openURL url
   let tags = parseTags resp
-      episodes = map getEpisode (getItems tags)
+      episodes = map makeEpisode (groupsOf "item" tags)
   return $ def {podcastEpisodes = episodes}
-  where
-    groupOf :: String -> [Tag String] -> [[Tag String]]
-    groupOf str =
-      map (takeWhile (~/= TagClose str) . tail) . sections (~== TagOpen str [])
-   
-    getItems = groupOf "item"
     
-    getEpisode :: [Tag String] -> Episode
-    getEpisode tags = Episode
-      { episodeTitle = getProperty "title" tags
-      , episodeAuthor = getProperty "itunes:author" tags
-      , episodeDate = getProperty "pubDate" tags
-      , episodeGuid = getProperty "guid" tags
-      , episodeDuration = getProperty "itunes:duration" tags >>= getDuration
-      , episodeImage = getProperty "image" tags --TODO: this field name may be wrong.
-      , episodeURL = getProperty "link" tags 
-      , episodeDescription = (getProperty "description" tags) <|>
-                             (getProperty "itunes:summary" tags)
-      }
+groupsOf :: String -> [Tag String] -> [[Tag String]]
+groupsOf str =
+  map (takeWhile (~/= TagClose str) . tail) . sections (~== TagOpen str [])
+   
+makeEpisode :: [Tag String] -> Episode
+makeEpisode itemContents = Episode
+  { episodeTitle = getProperty "title" itemContents
+  , episodeAuthor = getProperty "itunes:author" itemContents
+  , episodeDate = getProperty "pubDate" itemContents
+  , episodeGuid = getProperty "guid" itemContents
+  , episodeDuration = 
+      getProperty "itunes:duration" itemContents >>= getDuration
+  , episodeImage = getAttribute "image" "href" itemContents
+  , episodeURL = getProperty "link" itemContents
+  , episodeDescription = 
+      getProperty "description" itemContents <|> 
+      getProperty "itunes:summary" itemContents
+  }
 
 getDuration :: Text -> Maybe NominalDiffTime
 getDuration = 
-  fmap (fromInteger . fst) . headMay . readP_to_S (hms <|> ms) . T.unpack
+  fmap (fromInteger . fst) . headMay . parser . T.unpack
   where
-    hms = do
-      h <- hours <* char ':'
-      m <- minutes <* char ':'
-      s <- seconds
-      eof
-      return $ h + m + s
+    parser = readP_to_S (hhmmss <|> mmss)
 
-    ms = do
-      m <- minutes <* char ':'
-      s <- seconds
-      eof
-      return $ m + s
+    hhmmss = 
+      liftA2 (+) (hours <* char ':') mmss
 
-    hours = fmap (* 3600) $ twoDigit
-    minutes = fmap (* 60) $ twoDigit
-    seconds = twoDigit
-    twoDigit = fmap read $ count 2 (satisfy isDigit)
+    mmss =
+      liftA2 (+) (minutes <* char ':') (seconds <* eof)
+
+    hours = fmap (* 3600) $ twoDigits
+    minutes = fmap (* 60) $ twoDigits
+    seconds = twoDigits
+    twoDigits = fmap read $ count 2 (satisfy isDigit)
 
 getProperty :: String -> [Tag String] -> Maybe Text
 getProperty field = 
   fmap T.pack . maybeTagText <=< headMay <=< tailMay . dropWhile (~/= TagOpen field [])
-    
+
+getAttribute :: String -> String -> [Tag String] -> Maybe Text
+getAttribute field attr tags =
+  case headMay . dropWhile (not . isTagOpenName field) $ tags of
+    Just tag@(TagOpen _ _) ->
+      case fromAttrib attr tag of
+        "" -> Nothing
+        contents -> 
+          return . T.pack $ contents 
+    _ -> Nothing
+
+
