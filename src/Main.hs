@@ -3,13 +3,14 @@
 
 module Main where
 
+import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
 import           Data.Aeson
 import qualified Data.ByteString.Lazy.Char8 as LBS
+import           Data.Char
 import           Data.Default
-import           Data.Maybe
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Time.Clock
@@ -18,26 +19,27 @@ import           GHC.Generics
 import           Network.HTTP.Simple
 import           Safe
 import           Text.HTML.TagSoup
+import           Text.ParserCombinators.ReadP
 
 data Output = Output { podcasts :: [Podcast] } deriving (Show, Generic)
 
 instance ToJSON Output
 
 data Podcast = Podcast
-  { podcastArtist :: Text
+  { podcastArtist :: Maybe Text
   , podcastEpisodes :: [Episode]
   , podcastImage :: Maybe Text
-  , podcastSummary :: Text
-  , podcastTitle :: Text
+  , podcastSummary :: Maybe Text
+  , podcastTitle :: Maybe Text
   } deriving (Show, Generic)
 
 instance Default Podcast where
   def = Podcast 
-    { podcastArtist = ""
+    { podcastArtist = Nothing
     , podcastEpisodes = []
     , podcastImage = Nothing
-    , podcastSummary = ""
-    , podcastTitle = ""
+    , podcastSummary = Nothing
+    , podcastTitle = Nothing
     }
 
 instance ToJSON Podcast where
@@ -49,14 +51,14 @@ instance ToJSON Podcast where
                     ]
 
 data Episode = Episode
-  { episodeTitle :: Text
-  , episodeAuthor :: Text
-  , episodeDate :: Text
-  , episodeDuration :: NominalDiffTime
+  { episodeTitle :: Maybe Text
+  , episodeAuthor :: Maybe Text
+  , episodeDate :: Maybe Text
+  , episodeDuration :: Maybe NominalDiffTime
   , episodeImage :: Maybe Text
-  , episodeURL :: Text
-  , episodeDescription :: Text
-  , episodeGuid :: Text
+  , episodeURL :: Maybe Text
+  , episodeDescription :: Maybe Text
+  , episodeGuid :: Maybe Text
   } deriving (Show, Generic)
 
 instance ToJSON Episode where
@@ -73,14 +75,14 @@ instance ToJSON Episode where
 --TODO: Use OverloadedStrings extension
 instance Default Episode where
   def = Episode 
-    { episodeTitle = ""
-    , episodeAuthor = ""
-    , episodeDate = ""
-    , episodeDuration = 0
+    { episodeTitle = Nothing
+    , episodeAuthor = Nothing
+    , episodeDate = Nothing
+    , episodeDuration = Nothing
     , episodeImage = Nothing 
-    , episodeURL = ""
-    , episodeDescription = ""
-    , episodeGuid = ""
+    , episodeURL = Nothing
+    , episodeDescription = Nothing
+    , episodeGuid = Nothing
     }
 
 data ClubCastException
@@ -126,12 +128,39 @@ getPodcast url = do
     getItems = groupOf "item"
     
     getEpisode :: [Tag String] -> Episode
-    getEpisode tags = def
-      { episodeTitle = fromMaybe "" $ getProperty "title" tags
-      , episodeAuthor = fromMaybe "" $ getProperty "itunes:author" tags
-      , episodeDate = fromMaybe "" $ getProperty "pubDate" tags
-      , episodeGuid = fromMaybe "" $ getProperty "guide" tags
+    getEpisode tags = Episode
+      { episodeTitle = getProperty "title" tags
+      , episodeAuthor = getProperty "itunes:author" tags
+      , episodeDate = getProperty "pubDate" tags
+      , episodeGuid = getProperty "guid" tags
+      , episodeDuration = getProperty "itunes:duration" tags >>= getDuration
+      , episodeImage = getProperty "image" tags --TODO: this field name may be wrong.
+      , episodeURL = getProperty "link" tags 
+      , episodeDescription = (getProperty "description" tags) <|>
+                             (getProperty "itunes:summary" tags)
       }
+
+getDuration :: Text -> Maybe NominalDiffTime
+getDuration = 
+  fmap (fromInteger . fst) . headMay . readP_to_S (hms <|> ms) . T.unpack
+  where
+    hms = do
+      h <- hours <* char ':'
+      m <- minutes <* char ':'
+      s <- seconds
+      eof
+      return $ h + m + s
+
+    ms = do
+      m <- minutes <* char ':'
+      s <- seconds
+      eof
+      return $ m + s
+
+    hours = fmap (* 3600) $ twoDigit
+    minutes = fmap (* 60) $ twoDigit
+    seconds = twoDigit
+    twoDigit = fmap read $ count 2 (satisfy isDigit)
 
 getProperty :: String -> [Tag String] -> Maybe Text
 getProperty field = 
