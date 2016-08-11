@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Main where
+module Clubcast where
 
 import           Control.Applicative
 import           Control.Monad
@@ -21,7 +21,7 @@ import           Safe
 import           Text.HTML.TagSoup
 import           Text.ParserCombinators.ReadP
 
-data Output = Output { podcasts :: [Podcast] } deriving (Show, Generic)
+data Output = Output { getPodcasts :: [Podcast] } deriving (Show, Generic)
 
 instance ToJSON Output
 
@@ -166,13 +166,3 @@ getProperty :: String -> [Tag String] -> Maybe Text
 getProperty field = 
   fmap T.pack . maybeTagText <=< headMay <=< tailMay . dropWhile (~/= TagOpen field [])
     
-main :: IO ()
-main = do
-  output <- mapM getPodcast [electricForLife, hardwellOnAir]
-  LBS.writeFile "output/data.json" $ encode output
-
-electricForLife :: String
-electricForLife = "http://www.galexmusic.com/podcast/gareth.xml"
-
-hardwellOnAir :: String
-hardwellOnAir = "http://podcast.djhardwell.com/podcast.xml"
