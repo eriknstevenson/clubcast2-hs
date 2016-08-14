@@ -10,11 +10,12 @@ import           Control.Monad.Catch
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
 import           Data.Aeson
-import qualified Data.ByteString.Lazy.UTF8 as UTF8
+import           Data.ByteString.Lazy.Char8 (ByteString)
 import           Data.Char
 import           Data.Default
-import           Data.Text (Text)
-import qualified Data.Text as T
+import           Data.Text.Lazy (Text)
+import qualified Data.Text.Lazy as T
+import qualified Data.Text.Lazy.Encoding as T
 import           Data.Time.Clock
 import           Data.Monoid
 import           GHC.Generics
@@ -104,7 +105,7 @@ instance Show ClubCastException where
 
 openURL :: ( MonadCatch m
            , MonadIO m
-           , MonadReader Manager m) => String -> m UTF8.ByteString
+           , MonadReader Manager m) => String -> m ByteString
 openURL url = do
   req <- buildRequest url
   mgr <- ask
@@ -122,7 +123,7 @@ getFeedInfo :: ( MonadIO m
               , MonadCatch m
               , MonadReader Manager m) => String -> m Podcast
 getFeedInfo url = do
-  resp <- UTF8.toString <$> openURL url
+  resp <- T.unpack . T.decodeUtf8 <$> openURL url
   let tags = parseTags resp
       episodes = map makeEpisode (groupsOf "item" tags)
   return $ def {podcastEpisodes = episodes}
