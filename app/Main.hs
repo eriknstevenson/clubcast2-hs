@@ -1,13 +1,16 @@
 module Main where
 
 import Clubcast
+import Control.Monad.Reader
 import Data.Aeson
-import Data.ByteString.Lazy.Char8 as LBS
+import qualified Data.ByteString.Lazy.UTF8 as UTF8
+import Network.HTTP.Client
 
 main :: IO ()
 main = do
-  output <- mapM getPodcast podcasts
-  LBS.writeFile "output/data.json" $ encode output
+  mgr <- newManager defaultManagerSettings
+  output <- UTF8.toString . encode <$> runReaderT (mapM getFeedInfo podcasts) mgr
+  writeFile "output/data.json" output
 
 podcasts :: [String]
 podcasts =

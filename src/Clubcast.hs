@@ -1,4 +1,5 @@
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Clubcast where
@@ -7,8 +8,9 @@ import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
+import           Control.Monad.Reader
 import           Data.Aeson
-import qualified Data.ByteString.Lazy.Char8 as LBS
+import qualified Data.ByteString.Lazy.UTF8 as UTF8
 import           Data.Char
 import           Data.Default
 import           Data.Text (Text)
@@ -16,7 +18,8 @@ import qualified Data.Text as T
 import           Data.Time.Clock
 import           Data.Monoid
 import           GHC.Generics
-import           Network.HTTP.Simple
+import           Network.HTTP.Conduit
+import           Network.HTTP.Types.Status
 import           Safe
 import           Text.HTML.TagSoup
 import           Text.ParserCombinators.ReadP
@@ -85,7 +88,7 @@ instance Default Episode where
     }
 
 data ClubCastException
-  = BadResponse Int
+  = BadResponse Status
   | BadURL String
   | FailedToDownload HttpException
 
@@ -100,22 +103,26 @@ instance Show ClubCastException where
     "Failed to download feed information. The HTTP error was " <> show e
 
 openURL :: ( MonadCatch m
-           , MonadIO m ) => String -> m LBS.ByteString
+           , MonadIO m
+           , MonadReader Manager m) => String -> m UTF8.ByteString
 openURL url = do
   req <- buildRequest url
-  resp <- catch (httpLBS req) (throwM . FailedToDownload)
-  case getResponseStatusCode resp of
+  mgr <- ask
+  resp <- catch (httpLbs req mgr) (throwM . FailedToDownload)
+  case statusCode . responseStatus $ resp of
     200 ->
-      return . getResponseBody $ resp
-    code -> throwM (BadResponse code)
+      return . responseBody $ resp
+    _ -> throwM (BadResponse (responseStatus resp))
 
 buildRequest :: (MonadCatch m) => String -> m Request
 buildRequest url =
   catchAll (parseRequest url) (\_ -> throwM $ BadURL url)
 
-getPodcast :: String -> IO Podcast
-getPodcast url = do
-  resp <- LBS.unpack <$> openURL url
+getFeedInfo :: ( MonadIO m
+              , MonadCatch m
+              , MonadReader Manager m) => String -> m Podcast
+getFeedInfo url = do
+  resp <- UTF8.toString <$> openURL url
   let tags = parseTags resp
       episodes = map makeEpisode (groupsOf "item" tags)
   return $ def {podcastEpisodes = episodes}
@@ -151,10 +158,10 @@ getDuration =
     mmss =
       liftA2 (+) (minutes <* char ':') (seconds <* eof)
 
-    hours = fmap (* 3600) $ twoDigits
-    minutes = fmap (* 60) $ twoDigits
+    hours = (* 3600) <$> twoDigits
+    minutes = (* 60) <$> twoDigits
     seconds = twoDigits
-    twoDigits = fmap read $ count 2 (satisfy isDigit)
+    twoDigits = read <$> count 2 (satisfy isDigit)
 
 getProperty :: String -> [Tag String] -> Maybe Text
 getProperty field = 

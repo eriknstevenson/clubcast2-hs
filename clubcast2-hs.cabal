@@ -21,6 +21,9 @@ executable clubcast2-hs-exe
                      , aeson
                      , bytestring
                      , clubcast2-hs
+                     , http-client
+                     , mtl
+                     , utf8-string
 
 library 
   hs-source-dirs:      src
@@ -33,11 +36,14 @@ library
                      , data-default
                      , exceptions
                      , http-conduit
+                     , http-types
+                     , mtl
                      , safe
                      , tagsoup
                      , text
                      , time
                      , transformers
+                     , utf8-string
 
 test-suite spec
   type:             exitcode-stdio-1.0
