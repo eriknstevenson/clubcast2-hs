@@ -123,16 +123,16 @@ getFeedInfo :: ( MonadIO m
               , MonadCatch m
               , MonadReader Manager m) => String -> m Podcast
 getFeedInfo url = do
-  resp <- T.unpack . T.decodeUtf8 <$> openURL url
+  resp <- T.decodeUtf8 <$> openURL url
   let tags = parseTags resp
       episodes = map makeEpisode (groupsOf "item" tags)
   return $ def {podcastEpisodes = episodes}
     
-groupsOf :: String -> [Tag String] -> [[Tag String]]
+groupsOf :: Text -> [Tag Text] -> [[Tag Text]]
 groupsOf str =
   map (takeWhile (~/= TagClose str) . tail) . sections (~== TagOpen str [])
    
-makeEpisode :: [Tag String] -> Episode
+makeEpisode :: [Tag Text] -> Episode
 makeEpisode itemContents = Episode
   { episodeTitle = getProperty "title" itemContents
   , episodeAuthor = getProperty "itunes:author" itemContents
@@ -164,18 +164,18 @@ getDuration =
     seconds = twoDigits
     twoDigits = read <$> count 2 (satisfy isDigit)
 
-getProperty :: String -> [Tag String] -> Maybe Text
+getProperty :: Text -> [Tag Text] -> Maybe Text
 getProperty field = 
-  fmap T.pack . maybeTagText <=< headMay <=< tailMay . dropWhile (~/= TagOpen field [])
+  maybeTagText <=< headMay <=< tailMay . dropWhile (~/= TagOpen field [])
 
-getAttribute :: String -> String -> [Tag String] -> Maybe Text
+getAttribute :: Text -> Text -> [Tag Text] -> Maybe Text
 getAttribute field attr tags =
   case headMay . dropWhile (not . isTagOpenName field) $ tags of
     Just tag@(TagOpen _ _) ->
       case fromAttrib attr tag of
         "" -> Nothing
         contents -> 
-          return . T.pack $ contents 
+          return contents 
     _ -> Nothing
 
 

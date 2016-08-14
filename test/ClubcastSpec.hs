@@ -4,6 +4,7 @@ module ClubcastSpec where
 
 import Clubcast
 import Data.Char
+import Data.Text.Lazy (Text)
 import Test.Hspec
 import Text.HTML.TagSoup
 
@@ -41,18 +42,18 @@ spec = do
       it "returns Nothing when given invalid input" $
         getDuration "" `shouldBe` Nothing
 
-goodTag :: String -> [Tag String]
+goodTag :: Text -> [Tag Text]
 goodTag tagName = 
   [ TagOpen tagName []
   , TagText tagName
   , TagClose tagName
   ]
 
-badTag :: String -> [Tag String]
+badTag :: Text -> [Tag Text]
 badTag tagName = 
   [ TagOpen tagName []
   , TagClose tagName 
   ]
 
-imgTag :: [Tag String]
+imgTag :: [Tag Text]
 imgTag = [TagOpen "image" [("href","image-address")]]
