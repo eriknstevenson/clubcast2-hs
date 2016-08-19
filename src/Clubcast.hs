@@ -9,10 +9,14 @@ import           Control.Monad
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
+import           Control.Monad.Trans.Resource
 import           Data.Aeson
 import           Data.ByteString.Lazy.Char8 (ByteString)
 import           Data.Char
+import           Data.Conduit
+import qualified Data.Conduit.Binary as CB
 import           Data.Default
+import           Data.List
 import           Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
@@ -22,6 +26,7 @@ import           GHC.Generics
 import           Network.HTTP.Conduit
 import           Network.HTTP.Types.Status
 import           Safe
+import           System.Directory
 import           Text.HTML.TagSoup
 import           Text.ParserCombinators.ReadP
 
@@ -103,6 +108,33 @@ instance Show ClubCastException where
   show (FailedToDownload e) =
     "Failed to download feed information. The HTTP error was " <> show e
 
+
+saveFile :: ( MonadCatch m
+            , MonadReader Manager m
+            , MonadResource m) => String -> FilePath -> m ()
+saveFile url outputPath = do
+  req <- buildRequest url
+  mgr <- ask
+  resp <- http req mgr
+  responseBody resp $$+- (CB.sinkFile outputPath)
+
+
+downloadEpisode :: ( MonadCatch m
+                   , MonadReader Manager m
+                   , MonadResource m) => Episode -> m ()
+downloadEpisode ep = do
+  case (T.unpack <$> episodeURL ep) of
+    Just url -> do
+      let output = "output/" <> (reverse . takeWhile (/= '/') . reverse $ url)
+      fileExists <- liftIO . doesFileExist $ output
+      unless fileExists $ do
+        liftIO . putStrLn $ "Downloading: " <> url
+        saveFile url output
+
+    Nothing -> do
+      liftIO . putStrLn $ "No URL for " <> show ep
+
+
 getURL :: ( MonadCatch m
           , MonadIO m
           , MonadReader Manager m) => String -> m ByteString
@@ -115,13 +147,16 @@ getURL url = do
       return . responseBody $ resp
     _ -> throwM (BadResponse (responseStatus resp))
 
+
 buildRequest :: (MonadCatch m) => String -> m Request
 buildRequest url =
   catchAll (parseRequest url) (\_ -> throwM $ BadURL url)
 
+
 getFeedInfo :: ( MonadIO m
                , MonadCatch m
-               , MonadReader Manager m) => String -> m Podcast
+               , MonadReader Manager m
+               , MonadResource m) => String -> m Podcast
 getFeedInfo url = do
   resp <- T.decodeUtf8 <$> getURL url
   let tags = parseTags resp
@@ -133,6 +168,8 @@ getFeedInfo url = do
                 getProperty "itunes:subtitle" tags <|>
                 getProperty "itunes:summary" tags
 
+  mapM_ downloadEpisode episodes
+
   return $ Podcast { podcastEpisodes = episodes
                    , podcastArtist = artist
                    , podcastImage = image
@@ -140,9 +177,11 @@ getFeedInfo url = do
                    , podcastSummary = summary
                    }
 
+
 groupsOf :: Text -> [Tag Text] -> [[Tag Text]]
 groupsOf str =
   map (takeWhile (~/= TagClose str) . tail) . sections (~== TagOpen str [])
+
 
 makeEpisode :: [Tag Text] -> Episode
 makeEpisode itemContents = Episode
@@ -159,6 +198,7 @@ makeEpisode itemContents = Episode
       getProperty "description" itemContents <|>
       getProperty "itunes:summary" itemContents
   }
+
 
 getDuration :: Text -> Maybe NominalDiffTime
 getDuration =
@@ -177,9 +217,11 @@ getDuration =
     seconds = twoDigits
     twoDigits = read <$> count 2 (satisfy isDigit)
 
+
 getProperty :: Text -> [Tag Text] -> Maybe Text
 getProperty field =
   maybeTagText <=< headMay <=< tailMay . dropWhile (~/= TagOpen field [])
+
 
 getAttribute :: Text -> Text -> [Tag Text] -> Maybe Text
 getAttribute field attr tags =
@@ -190,5 +232,3 @@ getAttribute field attr tags =
         contents ->
           return contents
     _ -> Nothing
-
-
