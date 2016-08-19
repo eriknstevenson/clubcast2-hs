@@ -30,27 +30,27 @@ data Output = Output { getPodcasts :: [Podcast] } deriving (Show, Generic)
 instance ToJSON Output
 
 data Podcast = Podcast
-  { podcastArtist :: Maybe Text
-  , podcastEpisodes :: [Episode]
-  , podcastImage :: Maybe Text
+  { podcastTitle :: Maybe Text
+  , podcastArtist :: Maybe Text
   , podcastSummary :: Maybe Text
-  , podcastTitle :: Maybe Text
+  , podcastImage :: Maybe Text
+  , podcastEpisodes :: [Episode]
   } deriving (Show, Generic)
 
 instance Default Podcast where
-  def = Podcast 
-    { podcastArtist = Nothing
-    , podcastEpisodes = []
-    , podcastImage = Nothing
+  def = Podcast
+    { podcastTitle = Nothing
+    , podcastArtist = Nothing
     , podcastSummary = Nothing
-    , podcastTitle = Nothing
+    , podcastImage = Nothing
+    , podcastEpisodes = []
     }
 
 instance ToJSON Podcast where
   toJSON o = object [ "title" .= podcastTitle o
                     , "artist" .= podcastArtist o
-                    , "image" .= podcastImage o
                     , "summary" .= podcastSummary o
+                    , "image" .= podcastImage o
                     , "episodes" .= podcastEpisodes o
                     ]
 
@@ -69,7 +69,7 @@ instance ToJSON Episode where
   toJSON o = object [ "title" .= episodeTitle o
                     , "author" .= episodeAuthor o
                     , "date" .= episodeDate o
-                    , "duration" .= episodeDuration o 
+                    , "duration" .= episodeDuration o
                     , "image" .= episodeImage o
                     , "url" .= episodeURL o
                     , "description" .= episodeDescription o
@@ -77,12 +77,12 @@ instance ToJSON Episode where
                     ]
 
 instance Default Episode where
-  def = Episode 
+  def = Episode
     { episodeTitle = Nothing
     , episodeAuthor = Nothing
     , episodeDate = Nothing
     , episodeDuration = Nothing
-    , episodeImage = Nothing 
+    , episodeImage = Nothing
     , episodeURL = Nothing
     , episodeDescription = Nothing
     , episodeGuid = Nothing
@@ -103,10 +103,10 @@ instance Show ClubCastException where
   show (FailedToDownload e) =
     "Failed to download feed information. The HTTP error was " <> show e
 
-openURL :: ( MonadCatch m
-           , MonadIO m
-           , MonadReader Manager m) => String -> m ByteString
-openURL url = do
+getURL :: ( MonadCatch m
+          , MonadIO m
+          , MonadReader Manager m) => String -> m ByteString
+getURL url = do
   req <- buildRequest url
   mgr <- ask
   resp <- catch (httpLbs req mgr) (throwM . FailedToDownload)
@@ -120,40 +120,53 @@ buildRequest url =
   catchAll (parseRequest url) (\_ -> throwM $ BadURL url)
 
 getFeedInfo :: ( MonadIO m
-              , MonadCatch m
-              , MonadReader Manager m) => String -> m Podcast
+               , MonadCatch m
+               , MonadReader Manager m) => String -> m Podcast
 getFeedInfo url = do
-  resp <- T.decodeUtf8 <$> openURL url
+  resp <- T.decodeUtf8 <$> getURL url
   let tags = parseTags resp
       episodes = map makeEpisode (groupsOf "item" tags)
-  return $ def {podcastEpisodes = episodes}
-    
+      artist = getProperty "itunes:author" tags
+      image = getAttribute "itunes:image" "href" tags
+      title = getProperty "title" tags
+      summary = getProperty "description" tags     <|>
+                getProperty "itunes:subtitle" tags <|>
+                getProperty "itunes:summary" tags
+
+  return $ Podcast { podcastEpisodes = episodes
+                   , podcastArtist = artist
+                   , podcastImage = image
+                   , podcastTitle = title
+                   , podcastSummary = summary
+                   }
+
 groupsOf :: Text -> [Tag Text] -> [[Tag Text]]
 groupsOf str =
   map (takeWhile (~/= TagClose str) . tail) . sections (~== TagOpen str [])
-   
+
 makeEpisode :: [Tag Text] -> Episode
 makeEpisode itemContents = Episode
   { episodeTitle = getProperty "title" itemContents
   , episodeAuthor = getProperty "itunes:author" itemContents
   , episodeDate = getProperty "pubDate" itemContents
   , episodeGuid = getProperty "guid" itemContents
-  , episodeDuration = 
+  , episodeDuration =
       getProperty "itunes:duration" itemContents >>= getDuration
   , episodeImage = getAttribute "image" "href" itemContents
-  , episodeURL = getProperty "link" itemContents
-  , episodeDescription = 
-      getProperty "description" itemContents <|> 
+  , episodeURL = getProperty "link" itemContents <|>
+                 getAttribute "enclosure" "url" itemContents
+  , episodeDescription =
+      getProperty "description" itemContents <|>
       getProperty "itunes:summary" itemContents
   }
 
 getDuration :: Text -> Maybe NominalDiffTime
-getDuration = 
+getDuration =
   fmap (fromInteger . fst) . headMay . parser . T.unpack
   where
     parser = readP_to_S (hhmmss <|> mmss)
 
-    hhmmss = 
+    hhmmss =
       liftA2 (+) (hours <* char ':') mmss
 
     mmss =
@@ -165,7 +178,7 @@ getDuration =
     twoDigits = read <$> count 2 (satisfy isDigit)
 
 getProperty :: Text -> [Tag Text] -> Maybe Text
-getProperty field = 
+getProperty field =
   maybeTagText <=< headMay <=< tailMay . dropWhile (~/= TagOpen field [])
 
 getAttribute :: Text -> Text -> [Tag Text] -> Maybe Text
@@ -174,8 +187,8 @@ getAttribute field attr tags =
     Just tag@(TagOpen _ _) ->
       case fromAttrib attr tag of
         "" -> Nothing
-        contents -> 
-          return contents 
+        contents ->
+          return contents
     _ -> Nothing
 
 
