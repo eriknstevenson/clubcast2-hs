@@ -28,6 +28,11 @@ executable clubcast2-hs-exe
 library
   hs-source-dirs:      src
   exposed-modules:     Clubcast
+                     , Clubcast.Downloader
+                     , Clubcast.Episode
+                     , Clubcast.Exceptions
+                     , Clubcast.Parser
+                     , Clubcast.Podcast
   default-language:    Haskell2010
   ghc-options:         -Wall
   build-depends:       base >= 4.7 && < 5
