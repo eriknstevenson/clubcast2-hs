@@ -4,7 +4,6 @@ module ClubcastSpec where
 
 import Clubcast
 import Control.Concurrent.MVar
-import Control.Monad
 import Data.Char
 import Data.Text.Lazy (Text)
 import Network.HTTP.Conduit
@@ -21,24 +20,11 @@ spec = do
 
     let maxAttempts = 3
 
-    it "can retry failed downloads" $ do
-
-      retried <- newMVar False
-
-      retryDownload maxAttempts $ do
-        retried' <- readMVar retried
-        unless retried' $ do
-          modifyMVar_ retried (\_ -> return True)
-          _ <- parseUrlThrow "invalid URL"
-          return ()
-
-    it "throws an exception following n failures" $ do
+    it "throws an exception after exceeding the limit for failed attempts" $ do
 
       attemptsMade <- newMVar 0
 
-      flip shouldThrow isDownloadError $ retryDownload maxAttempts $ do
-        modifyMVar_ attemptsMade (\a -> return $ a + 1)
-        parseUrlThrow "invalid URL"
+      retryDownload maxAttempts (countAttempts attemptsMade) `shouldThrow` isDownloadError
 
       attemptsMade' <- readMVar attemptsMade
       attemptsMade' `shouldBe` maxAttempts
@@ -87,3 +73,8 @@ badTag tagName =
 
 imgTag :: [Tag Text]
 imgTag = [TagOpen "image" [("href","image-address")]]
+
+countAttempts :: MVar Int -> IO Request
+countAttempts a = do
+  modifyMVar_ a (\n -> return $ n + 1)
+  parseUrlThrow "invalid URL"

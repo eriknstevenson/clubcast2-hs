@@ -26,9 +26,10 @@ saveFile url outputPath = do
   responseBody resp $$+- CB.sinkFile outputPath
 
 retryDownload :: Int -> IO a -> IO a
-retryDownload = retry (\n -> "Download failed. " <> show n <> " attempts remain.") (throwM . DownloadError)
+retryDownload = retry (\n -> "Download failed. " <> show (n - 1) <> " attempts remain.") (throwM . DownloadError)
+
 retry :: (Exception e) => (Int -> String) -> (e -> IO a) -> Int -> IO a -> IO a
-retry msg failAction n action=
+retry msg failAction n action = do
   action `catch` \e ->
     if n > 1
       then do
