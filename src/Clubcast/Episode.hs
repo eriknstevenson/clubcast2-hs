@@ -69,7 +69,7 @@ downloadEpisode ep =
       fileExists <- liftIO . doesFileExist $ output
       unless fileExists $ do
         liftIO . putStrLn $ "Downloading: " <> url
-        saveFile url output `catch` (throwM . FailedToDownload)
+        saveFile url output `catch` (throwM . DownloadError)
 
     Nothing -> liftIO . putStrLn $ "No URL for " <> show ep
 

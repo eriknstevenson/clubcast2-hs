@@ -64,6 +64,7 @@ test-suite spec
                     , aeson
                     , bytestring
                     , clubcast2-hs
+                    , http-conduit
                     , hspec
                     , QuickCheck
                     , tagsoup

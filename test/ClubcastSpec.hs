@@ -3,18 +3,48 @@
 module ClubcastSpec where
 
 import Clubcast
+import Control.Concurrent.MVar
+import Control.Monad
 import Data.Char
 import Data.Text.Lazy (Text)
+import Network.HTTP.Conduit
 import Test.Hspec
 import Text.HTML.TagSoup
 
 spec :: Spec
 spec = do
-  describe "example tests" $ 
+  describe "example tests" $
     it "can use expectations" $
       map toLower "HI" `shouldBe` "hi"
 
-  describe "podcast feed parsing" $ do
+  describe "downloader" $ do
+
+    let maxAttempts = 3
+
+    it "can retry failed downloads" $ do
+
+      retried <- newMVar False
+
+      retryDownload maxAttempts $ do
+        retried' <- readMVar retried
+        unless retried' $ do
+          modifyMVar_ retried (\_ -> return True)
+          _ <- parseUrlThrow "invalid URL"
+          return ()
+
+    it "throws an exception following n failures" $ do
+
+      attemptsMade <- newMVar 0
+
+      flip shouldThrow isDownloadError $ retryDownload maxAttempts $ do
+        modifyMVar_ attemptsMade (\a -> return $ a + 1)
+        parseUrlThrow "invalid URL"
+
+      attemptsMade' <- readMVar attemptsMade
+      attemptsMade' `shouldBe` maxAttempts
+
+
+  describe "parsing" $ do
 
     describe "property extraction" $ do
       it "can extract information from valid tags" $
@@ -43,16 +73,16 @@ spec = do
         getDuration "" `shouldBe` Nothing
 
 goodTag :: Text -> [Tag Text]
-goodTag tagName = 
+goodTag tagName =
   [ TagOpen tagName []
   , TagText tagName
   , TagClose tagName
   ]
 
 badTag :: Text -> [Tag Text]
-badTag tagName = 
+badTag tagName =
   [ TagOpen tagName []
-  , TagClose tagName 
+  , TagClose tagName
   ]
 
 imgTag :: [Tag Text]

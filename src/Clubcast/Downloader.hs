@@ -25,14 +25,16 @@ saveFile url outputPath = do
   resp <- http req mgr
   responseBody resp $$+- CB.sinkFile outputPath
 
-retry :: (Num n, Ord n, Show n) => n -> IO a -> IO a
-retry n action =
+retryDownload :: Int -> IO a -> IO a
+retryDownload = retry (\n -> "Download failed. " <> show n <> " attempts remain.") (throwM . DownloadError)
+retry :: (Exception e) => (Int -> String) -> (e -> IO a) -> Int -> IO a -> IO a
+retry msg failAction n action=
   action `catch` \e ->
-    if n > 0
+    if n > 1
       then do
-        putStrLn $ "Download failed. " <> show n <> " attempts remain."
-        retry (n - 1) action
-      else throwM . FailedToDownload $ e
+        putStrLn $ msg n
+        retry msg failAction (n - 1) action
+      else failAction e
 
 getURL :: ( MonadCatch m
           , MonadIO m
@@ -40,7 +42,7 @@ getURL :: ( MonadCatch m
 getURL url = do
   req <- buildRequest url
   mgr <- ask
-  resp <- httpLbs req mgr `catch` (throwM . FailedToDownload)
+  resp <- httpLbs req mgr `catch` (throwM . DownloadError)
   case statusCode . responseStatus $ resp of
     200 ->
       return . responseBody $ resp
