@@ -12,9 +12,6 @@ import Text.HTML.TagSoup
 
 spec :: Spec
 spec = do
-  describe "example tests" $
-    it "can use expectations" $
-      map toLower "HI" `shouldBe` "hi"
 
   describe "downloader" $ do
 

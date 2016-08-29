@@ -29,7 +29,7 @@ retryDownload :: Int -> IO a -> IO a
 retryDownload = retry (\n -> "Download failed. " <> show (n - 1) <> " attempts remain.") (throwM . DownloadError)
 
 retry :: (Exception e) => (Int -> String) -> (e -> IO a) -> Int -> IO a -> IO a
-retry msg failAction n action = do
+retry msg failAction n action =
   action `catch` \e ->
     if n > 1
       then do

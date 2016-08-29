@@ -22,11 +22,14 @@ instance Show ClubCastException where
   show (DownloadError e) =
     "Failed to download feed information. The HTTP error was " <> show e
 
+isDownloadError :: ClubCastException -> Bool
 isDownloadError (DownloadError _) = True
 isDownloadError _ = False
 
+isBadURL :: ClubCastException -> Bool
 isBadURL (BadURL _) = True
 isBadURL _ = False
 
+isBadResponse :: ClubCastException -> Bool
 isBadResponse (BadResponse _) = True
 isBadResponse _ = False
