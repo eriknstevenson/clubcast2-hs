@@ -1,6 +1,7 @@
 module Main where
 
 import           Clubcast
+import           Control.Monad.Reader
 import           Control.Monad.Trans.Resource
 import           Data.Aeson
 import qualified Data.Text.Lazy.Encoding as T
@@ -26,6 +27,7 @@ podcasts =
   , "http://podcast.djhardwell.com/podcast.xml"
   ]
 
+doStuff :: ResourceT (ReaderT Manager IO) [Podcast]
 doStuff = do
   queue <- makeDownloadQueue
   createWorkers 5 queue

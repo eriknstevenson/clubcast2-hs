@@ -1,63 +1,13 @@
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Clubcast.Episode where
 
-import Clubcast.Downloader
 import Clubcast.Parser
+import Clubcast.Types
 
 import           Control.Applicative
-import           Control.Concurrent.STM
-import           Control.Monad
-import           Control.Monad.Catch
-import           Control.Monad.IO.Class
-import           Control.Monad.Reader
-import           Control.Monad.Trans.Resource
-import           Data.Aeson
-import           Data.Default
 import           Data.Text.Lazy (Text)
-import qualified Data.Text.Lazy as T
-import           Data.Time.Clock
-import           Data.Monoid
-import           GHC.Generics
-import           Network.HTTP.Conduit
-import           System.Directory
 import           Text.HTML.TagSoup
-
-data Episode = Episode
-  { episodeTitle :: Maybe Text
-  , episodeAuthor :: Maybe Text
-  , episodeDate :: Maybe Text
-  , episodeDuration :: Maybe NominalDiffTime
-  , episodeImage :: Maybe Text
-  , episodeURL :: Maybe Text
-  , episodeDescription :: Maybe Text
-  , episodeGuid :: Maybe Text
-  } deriving (Show, Generic)
-
-instance ToJSON Episode where
-  toJSON o = object [ "title" .= episodeTitle o
-                    , "author" .= episodeAuthor o
-                    , "date" .= episodeDate o
-                    , "duration" .= episodeDuration o
-                    , "image" .= episodeImage o
-                    , "url" .= episodeURL o
-                    , "description" .= episodeDescription o
-                    , "guid" .= episodeGuid o
-                    ]
-
-instance Default Episode where
-  def = Episode
-    { episodeTitle = Nothing
-    , episodeAuthor = Nothing
-    , episodeDate = Nothing
-    , episodeDuration = Nothing
-    , episodeImage = Nothing
-    , episodeURL = Nothing
-    , episodeDescription = Nothing
-    , episodeGuid = Nothing
-    }
 
 {-
 downloadEpisode :: ( MonadCatch m

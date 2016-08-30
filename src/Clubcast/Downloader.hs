@@ -4,6 +4,7 @@ module Clubcast.Downloader where
 
 import Clubcast.Exceptions
 import Clubcast.Parser
+import Clubcast.Types
 
 import           Control.Concurrent
 import           Control.Concurrent.STM hiding (retry)

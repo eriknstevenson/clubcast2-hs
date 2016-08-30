@@ -6,4 +6,4 @@ import Clubcast.Episode    as X
 import Clubcast.Exceptions as X
 import Clubcast.Parser     as X
 import Clubcast.Podcast    as X
-
+import Clubcast.Types      as X
