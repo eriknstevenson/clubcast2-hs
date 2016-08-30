@@ -9,6 +9,7 @@ import Clubcast.Episode
 import Clubcast.Parser
 
 import           Control.Applicative
+import           Control.Concurrent.STM
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
@@ -16,6 +17,7 @@ import           Control.Monad.Trans.Resource
 import           Data.Aeson
 import           Data.Default
 import           Data.Text.Lazy (Text)
+import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 import           GHC.Generics
 import           Network.HTTP.Conduit
@@ -53,8 +55,8 @@ instance ToJSON Podcast where
 getFeedInfo :: ( MonadIO m
                , MonadCatch m
                , MonadReader Manager m
-               , MonadResource m) => String -> m Podcast
-getFeedInfo url = do
+               , MonadResource m) => TQueue String -> String -> m Podcast
+getFeedInfo downloadQueue url = do
   resp <- T.decodeUtf8 <$> getURL url
   let tags = parseTags resp
       episodes = map makeEpisode (groupsOf "item" tags)
@@ -65,7 +67,10 @@ getFeedInfo url = do
                 getProperty "itunes:subtitle" tags <|>
                 getProperty "itunes:summary" tags
 
-  mapM_ downloadEpisode episodes
+  forM_ episodes $ \e ->
+    case episodeURL e of
+      Just downloadURL -> addJob downloadQueue (T.unpack downloadURL)
+      Nothing -> return ()
 
   return Podcast { podcastEpisodes = episodes
                  , podcastArtist = artist

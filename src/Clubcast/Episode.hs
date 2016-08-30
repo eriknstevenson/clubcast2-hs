@@ -5,10 +5,10 @@
 module Clubcast.Episode where
 
 import Clubcast.Downloader
-import Clubcast.Exceptions
 import Clubcast.Parser
 
 import           Control.Applicative
+import           Control.Concurrent.STM
 import           Control.Monad
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
@@ -59,6 +59,7 @@ instance Default Episode where
     , episodeGuid = Nothing
     }
 
+{-
 downloadEpisode :: ( MonadCatch m
                    , MonadReader Manager m
                    , MonadResource m) => Episode -> m ()
@@ -69,10 +70,10 @@ downloadEpisode ep =
       fileExists <- liftIO . doesFileExist $ output
       unless fileExists $ do
         liftIO . putStrLn $ "Downloading: " <> url
-        saveFile url output `catch` (throwM . DownloadError)
+        retryDownload 3 $ saveFile url output
 
     Nothing -> liftIO . putStrLn $ "No URL for " <> show ep
-
+-}
 
 makeEpisode :: [Tag Text] -> Episode
 makeEpisode itemContents = Episode

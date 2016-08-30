@@ -4,6 +4,7 @@ module ClubcastSpec where
 
 import Clubcast
 import Control.Concurrent.MVar
+import Control.Monad.IO.Class
 import Data.Char
 import Data.Text.Lazy (Text)
 import Network.HTTP.Conduit
@@ -71,7 +72,7 @@ badTag tagName =
 imgTag :: [Tag Text]
 imgTag = [TagOpen "image" [("href","image-address")]]
 
-countAttempts :: MVar Int -> IO Request
+countAttempts :: MonadIO m => MVar Int -> m Request
 countAttempts a = do
-  modifyMVar_ a (\n -> return $ n + 1)
-  parseUrlThrow "invalid URL"
+  liftIO $ modifyMVar_ a (\n -> return $ n + 1)
+  liftIO . parseUrlThrow $ "invalid URL"
