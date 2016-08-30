@@ -2,7 +2,7 @@
 
 module Clubcast.Parser where
 
-import Clubcast.Exceptions
+import Clubcast.Types
 
 import           Control.Applicative
 import           Control.Monad

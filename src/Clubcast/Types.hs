@@ -2,15 +2,18 @@
 
 module Clubcast.Types where
 
+import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Monad.Reader
 import Control.Monad.Trans.Resource
 import Data.Aeson
 import Data.Default
+import Data.Monoid
 import Data.Text.Lazy (Text)
 import Data.Time.Clock
 import GHC.Generics
 import Network.HTTP.Client.Conduit
+import Network.HTTP.Types.Status
 
 data Config = Config { manager :: Manager
                      , maxSimultaneousDownloads :: Int
@@ -88,4 +91,31 @@ instance Default Episode where
     , episodeDescription = Nothing
     , episodeGuid = Nothing
     }
+
+data ClubCastException
+  = BadResponse Status
+  | BadURL String
+  | DownloadError HttpException
+
+instance Exception ClubCastException
+
+instance Show ClubCastException where
+  show (BadResponse code) =
+    "Received a non-200 status code. The code was " <> show code
+  show (BadURL url) =
+    "Unable to parse URL: " <> show url
+  show (DownloadError e) =
+    "Failed to download feed information. The HTTP error was " <> show e
+
+isDownloadError :: ClubCastException -> Bool
+isDownloadError (DownloadError _) = True
+isDownloadError _ = False
+
+isBadURL :: ClubCastException -> Bool
+isBadURL (BadURL _) = True
+isBadURL _ = False
+
+isBadResponse :: ClubCastException -> Bool
+isBadResponse (BadResponse _) = True
+isBadResponse _ = False
 

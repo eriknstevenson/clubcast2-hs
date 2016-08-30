@@ -31,7 +31,6 @@ library
   exposed-modules:     Clubcast
                      , Clubcast.Downloader
                      , Clubcast.Episode
-                     , Clubcast.Exceptions
                      , Clubcast.Parser
                      , Clubcast.Podcast
                      , Clubcast.Types
