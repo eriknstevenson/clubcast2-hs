@@ -46,6 +46,7 @@ library
                      , exceptions
                      , http-conduit
                      , http-types
+                     , monad-control
                      , mtl
                      , random
                      , resourcet
@@ -55,6 +56,7 @@ library
                      , text
                      , time
                      , transformers
+                     , transformers-base
 
 test-suite spec
   type:             exitcode-stdio-1.0

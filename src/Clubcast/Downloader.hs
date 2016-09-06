@@ -19,26 +19,19 @@ import           Network.HTTP.Conduit
 import           Network.HTTP.Types.Status
 import           System.Directory
 
-saveFile :: ( MonadCatch m
-            , MonadReader Manager m
-            , MonadResource m) => String -> FilePath -> m ()
+saveFile :: String -> FilePath -> Clubcast ()
 saveFile url outputPath = do
   req <- buildRequest url
-  mgr <- ask
-  resp <- http req mgr
-  responseBody resp $$+- CB.sinkFile outputPath
+  mgr <- asks manager
+  runResourceT $ do
+    resp <- http req mgr
+    responseBody resp $$+- CB.sinkFile outputPath
 
-retryDownload :: ( MonadCatch m
-                 , MonadReader Manager m
-                 , MonadResource m) => Int -> m a -> m a
+retryDownload :: Int -> Clubcast a -> Clubcast a
 retryDownload =
   retry (\n -> "Download failed. " <> show (n - 1) <> " attempts remain.") (throwM . DownloadError)
 
-retry :: ( Exception e
-         , MonadCatch m
-         , MonadReader Manager m
-         , MonadResource m)
-         => (Int -> String) -> (e -> m a) -> Int -> m a -> m a
+retry :: Exception e => (Int -> String) -> (e -> Clubcast a) -> Int -> Clubcast a -> Clubcast a
 retry msg failAction n action =
   action `catch` \e ->
     if n > 1
@@ -47,19 +40,15 @@ retry msg failAction n action =
         retry msg failAction (n - 1) action
       else failAction e
 
-getURL :: ( MonadCatch m
-          , MonadIO m
-          , MonadReader Manager m) => String -> m ByteString
+getURL :: String -> Clubcast ByteString
 getURL url = do
   req <- buildRequest url
-  mgr <- ask
+  mgr <- asks manager
   resp <- httpLbs req mgr `catch` (throwM . DownloadError)
   case statusCode . responseStatus $ resp of
     200 ->
       return . responseBody $ resp
     _ -> throwM (BadResponse (responseStatus resp))
-
-
 
 {-doJobs :: IO ()
 doJobs = do
@@ -76,23 +65,17 @@ insertSomeJobs jobList = do
 -}
 -----------
 
-makeDownloadQueue :: MonadIO m => m (TQueue String)
+makeDownloadQueue :: MonadIO m => ClubcastT m (TQueue String)
 makeDownloadQueue =
   liftIO . atomically $ newTQueue
 
-createWorkers :: ( MonadCatch m
-                 , MonadIO m
-                 , MonadResource m
-                 , MonadReader Manager m) => Int -> TQueue String -> m ()
+createWorkers :: MonadIO m => Int -> TQueue String -> ClubcastT m ()
 createWorkers count jobList = do
-  mgr <- ask
+  mgr <- asks manager
   replicateM_ count . liftIO . forkIO $
-    runReaderT (runResourceT $ worker jobList) mgr
+    runClubcastWith mgr $ worker jobList
 
-worker :: ( MonadCatch m
-          , MonadIO m
-          , MonadReader Manager m
-          , MonadResource m) => TQueue String -> m ()
+worker :: TQueue String -> Clubcast ()
 worker jobList =
   forever $ do
     url <- liftIO . atomically $ readTQueue jobList
@@ -104,6 +87,6 @@ worker jobList =
     unless fileExists $
       retryDownload 3 $ saveFile url output
 
-addJob :: MonadIO m => TQueue String -> String -> m ()
+addJob :: TQueue String -> String -> Clubcast ()
 addJob downloadQueue url =
   liftIO . atomically $ writeTQueue downloadQueue url
