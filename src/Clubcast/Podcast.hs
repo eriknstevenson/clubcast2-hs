@@ -18,9 +18,9 @@ getFeedInfo :: TQueue String -> String -> Clubcast Podcast
 getFeedInfo downloadQueue url = do
   resp <- T.decodeUtf8 <$> getURL url
   let tags = parseTags resp
-      episodes = map makeEpisode (groupsOf "item" tags)
-      artist = getProperty "itunes:author" tags
       image = getAttribute "itunes:image" "href" tags
+      episodes = map (makeEpisode image) (groupsOf "item" tags)
+      artist = getProperty "itunes:author" tags
       title = getProperty "title" tags
       summary = getProperty "description" tags     <|>
                 getProperty "itunes:subtitle" tags <|>
