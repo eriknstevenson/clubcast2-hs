@@ -10,6 +10,7 @@ import Clubcast.Types
 import           Control.Applicative
 import           Control.Concurrent.STM
 import           Control.Monad
+import           Data.Default
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 import           Text.HTML.TagSoup
@@ -19,7 +20,9 @@ getFeedInfo downloadQueue url = do
   resp <- T.decodeUtf8 <$> getURL url
   let tags = parseTags resp
       image = getAttribute "itunes:image" "href" tags
-      episodes = map (makeEpisode image) (groupsOf "item" tags)
+      fallback = def { episodeImage = image
+                     , episodeAuthor = artist}
+      episodes = map (makeEpisode fallback) (groupsOf "item" tags)
       artist = getProperty "itunes:author" tags
       title = getProperty "title" tags
       summary = getProperty "description" tags     <|>

@@ -8,15 +8,17 @@ import Control.Applicative
 import Data.Text.Lazy (Text)
 import Text.HTML.TagSoup
 
-makeEpisode :: Maybe Text -> [Tag Text] -> Episode
-makeEpisode defaultImage itemContents = Episode
+makeEpisode :: Episode -> [Tag Text] -> Episode
+makeEpisode fallback itemContents = Episode
   { episodeTitle = getProperty "title" itemContents
-  , episodeAuthor = getProperty "itunes:author" itemContents
+  , episodeAuthor = getProperty "itunes:author" itemContents <|>
+                    episodeAuthor fallback
   , episodeDate = getProperty "pubDate" itemContents
   , episodeGuid = getProperty "guid" itemContents
   , episodeDuration =
       getProperty "itunes:duration" itemContents >>= getDuration
-  , episodeImage = getAttribute "image" "href" itemContents <|> defaultImage
+  , episodeImage = getAttribute "image" "href" itemContents <|>
+                   episodeImage fallback
   , episodeURL = getProperty "link" itemContents <|>
                  getAttribute "enclosure" "url" itemContents
   , episodeDescription =
