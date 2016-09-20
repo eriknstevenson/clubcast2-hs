@@ -24,4 +24,8 @@ makeEpisode fallback itemContents = Episode
   , episodeDescription =
       getProperty "description" itemContents <|>
       getProperty "itunes:summary" itemContents
+  , episodeTrackList = []
   }
+
+addTrackList :: Episode -> [Text] -> Episode
+addTrackList ep tracks = ep {episodeTrackList = tracks}

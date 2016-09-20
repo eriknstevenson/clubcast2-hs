@@ -1,7 +1,9 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Clubcast.Downloader where
 
+import Clubcast.Episode
 import Clubcast.Parser
 import Clubcast.Types
 
@@ -15,6 +17,7 @@ import           Data.ByteString.Lazy.Char8 (ByteString)
 import           Data.Conduit
 import qualified Data.Conduit.Binary as CB
 import           Data.Monoid
+import qualified Data.Text.Lazy as T
 import           Network.HTTP.Conduit
 import           Network.HTTP.Types.Status
 import           System.Directory
@@ -29,15 +32,15 @@ saveFile url outputPath = do
 
 retryDownload :: Int -> Clubcast a -> Clubcast a
 retryDownload =
-  retry (\n -> "Download failed. " <> show (n - 1) <> " attempts remain.") (throwM . DownloadError)
+  retryTimes (\n -> "Download failed. " <> show (n - 1) <> " attempts remain.") (throwM . DownloadError)
 
-retry :: Exception e => (Int -> String) -> (e -> Clubcast a) -> Int -> Clubcast a -> Clubcast a
-retry msg failAction n action =
+retryTimes :: Exception e => (Int -> String) -> (e -> Clubcast a) -> Int -> Clubcast a -> Clubcast a
+retryTimes msg failAction n action =
   action `catch` \e ->
     if n > 1
       then do
         liftIO . putStrLn $ msg n
-        retry msg failAction (n - 1) action
+        retryTimes msg failAction (n - 1) action
       else failAction e
 
 getURL :: String -> Clubcast ByteString
@@ -50,43 +53,60 @@ getURL url = do
       return . responseBody $ resp
     _ -> throwM (BadResponse (responseStatus resp))
 
-{-doJobs :: IO ()
-doJobs = do
-  jobs <- atomically newTQueue
-  replicateM_ 3 $ forkIO $ worker jobs
-  insertSomeJobs jobs
-  putStrLn "inserted jobs"
-  return ()
 
-insertSomeJobs :: TQueue String -> IO ()
-insertSomeJobs jobList = do
-  atomically . replicateM_ 30 $ writeTQueue jobList "an URL"
-  return ()
--}
------------
+data Job =
+  Download FilePath | ExtractTracks FilePath deriving (Show, Eq)
 
-makeDownloadQueue :: MonadIO m => ClubcastT m (TQueue String)
-makeDownloadQueue =
-  liftIO . atomically $ newTQueue
+makeQueue :: MonadIO m => Int -> [Episode] -> ClubcastT m (TQueue (Episode, Job), TQueue Episode)
+makeQueue workerCount episodes = do
 
-createWorkers :: MonadIO m => Int -> TQueue String -> ClubcastT m ()
-createWorkers count jobList = do
+  (q,r) <- liftIO . atomically $
+    (,) <$> newTQueue <*> newTQueue
+
+  liftIO . atomically $ forM_ episodes $ \e ->
+    case episodeURL e of
+      Just url ->
+        writeTQueue q (e, Download . T.unpack $ url)
+      _ -> return ()
+
+
+  _ <- createWorkers workerCount q r
+
+  return (q, r)
+
+createWorkers :: MonadIO m => Int -> TQueue (Episode, Job) -> TQueue Episode -> ClubcastT m [ThreadId]
+createWorkers count jobQueue resultQueue = do
   mgr <- asks manager
-  replicateM_ count . liftIO . forkIO $
-    runClubcastWith mgr $ worker jobList
+  replicateM count . liftIO . forkIO $
+    runClubcastWith mgr $ worker jobQueue resultQueue
 
-worker :: TQueue String -> Clubcast ()
-worker jobList =
+urlToOutput :: String -> String
+urlToOutput url =
+  "output/" <> (reverse . takeWhile (/= '/') . reverse $ url)
+
+worker :: TQueue (Episode, Job) -> TQueue Episode -> Clubcast ()
+worker jobQueue resultQueue =
   forever $ do
-    url <- liftIO . atomically $ readTQueue jobList
+    nextItem <- liftIO . atomically $ tryReadTQueue jobQueue
+    case nextItem of
+      Just (associatedEp, Download url) -> do
 
-    let output = "output/" <> (reverse . takeWhile (/= '/') . reverse $ url)
+        let output = urlToOutput url
+        fileExists <- liftIO . doesFileExist $ output
 
-    fileExists <- liftIO . doesFileExist $ output
+        unless fileExists
+          $ retryDownload 3
+          $ saveFile url output
 
-    unless fileExists $
-      retryDownload 3 $ saveFile url output
+        liftIO . atomically $ writeTQueue jobQueue (associatedEp, ExtractTracks output)
 
-addJob :: TQueue String -> String -> Clubcast ()
-addJob downloadQueue url =
-  liftIO . atomically $ writeTQueue downloadQueue url
+      Just (associatedEp, ExtractTracks filepath) -> liftIO $
+          atomically $
+            writeTQueue resultQueue
+              (addTrackList associatedEp ["Track 1", "Track 2", "Track 3", "Track 4"])
+
+
+      Nothing -> liftIO $ do
+        tid <- myThreadId
+        killThread tid
+

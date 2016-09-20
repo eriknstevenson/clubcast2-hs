@@ -94,6 +94,7 @@ data Episode = Episode
   , episodeURL :: Maybe Text
   , episodeDescription :: Maybe Text
   , episodeGuid :: Maybe Text
+  , episodeTrackList :: [Text]
   } deriving (Show, Generic)
 
 instance ToJSON Episode where
@@ -117,6 +118,7 @@ instance Default Episode where
     , episodeURL = Nothing
     , episodeDescription = Nothing
     , episodeGuid = Nothing
+    , episodeTrackList = []
     }
 
 data ClubcastException

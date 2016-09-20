@@ -11,10 +11,8 @@ main = do
   setLocaleEncoding utf8
 
   output <- T.decodeUtf8 . encode <$> (runClubcast doStuff)
-  T.writeFile "output/data.json" output
 
-  putStrLn "waiting for downloads to finish. press a key"
-  _ <- getLine
+  T.writeFile "output/data.json" output
 
   return ()
 
@@ -25,7 +23,4 @@ podcasts =
   ]
 
 doStuff :: Clubcast [Podcast]
-doStuff = do
-  queue <- makeDownloadQueue
-  createWorkers 5 queue
-  mapM (getFeedInfo queue) podcasts
+doStuff = mapM getFeedInfo podcasts
