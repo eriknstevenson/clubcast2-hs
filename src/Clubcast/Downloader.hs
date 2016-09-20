@@ -53,11 +53,7 @@ getURL url = do
       return . responseBody $ resp
     _ -> throwM (BadResponse (responseStatus resp))
 
-
-data Job =
-  Download FilePath | ExtractTracks FilePath deriving (Show, Eq)
-
-makeQueue :: MonadIO m => Int -> [Episode] -> ClubcastT m (TQueue (Episode, Job), TQueue Episode)
+makeQueue :: MonadIO m => Int -> [Episode] -> ClubcastT m (TQueue (Episode, String), TQueue Episode)
 makeQueue workerCount episodes = do
 
   (q,r) <- liftIO . atomically $
@@ -66,7 +62,7 @@ makeQueue workerCount episodes = do
   liftIO . atomically $ forM_ episodes $ \e ->
     case episodeURL e of
       Just url ->
-        writeTQueue q (e, Download . T.unpack $ url)
+        writeTQueue q (e, T.unpack url)
       _ -> return ()
 
 
@@ -74,7 +70,7 @@ makeQueue workerCount episodes = do
 
   return (q, r)
 
-createWorkers :: MonadIO m => Int -> TQueue (Episode, Job) -> TQueue Episode -> ClubcastT m [ThreadId]
+createWorkers :: MonadIO m => Int -> TQueue (Episode, String) -> TQueue Episode -> ClubcastT m [ThreadId]
 createWorkers count jobQueue resultQueue = do
   mgr <- asks manager
   replicateM count . liftIO . forkIO $
@@ -84,12 +80,12 @@ urlToOutput :: String -> String
 urlToOutput url =
   "output/" <> (reverse . takeWhile (/= '/') . reverse $ url)
 
-worker :: TQueue (Episode, Job) -> TQueue Episode -> Clubcast ()
+worker :: TQueue (Episode, String) -> TQueue Episode -> Clubcast ()
 worker jobQueue resultQueue =
   forever $ do
     nextItem <- liftIO . atomically $ tryReadTQueue jobQueue
     case nextItem of
-      Just (associatedEp, Download url) -> do
+      Just (associatedEp, url) -> do
 
         let output = urlToOutput url
         fileExists <- liftIO . doesFileExist $ output
@@ -98,13 +94,14 @@ worker jobQueue resultQueue =
           $ retryDownload 3
           $ saveFile url output
 
-        liftIO . atomically $ writeTQueue jobQueue (associatedEp, ExtractTracks output)
+        --extract track list
+        liftIO . atomically $
+          writeTQueue resultQueue
+            (addTrackList associatedEp ["Track 1", "Track 2", "Track 3", "Track 4"])
 
-      Just (associatedEp, ExtractTracks filepath) -> liftIO $
-          atomically $
-            writeTQueue resultQueue
-              (addTrackList associatedEp ["Track 1", "Track 2", "Track 3", "Track 4"])
-
+        --remove file
+        liftIO $
+          removeFile output
 
       Nothing -> liftIO $ do
         tid <- myThreadId
