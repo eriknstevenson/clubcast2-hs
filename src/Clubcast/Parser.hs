@@ -24,8 +24,8 @@ groupsOf :: Text -> [Tag Text] -> [[Tag Text]]
 groupsOf str =
   map (takeWhile (~/= TagClose str) . tail) . sections (~== TagOpen str [])
 
-getDuration :: Text -> Maybe NominalDiffTime
-getDuration =
+parseDuration :: Text -> Maybe NominalDiffTime
+parseDuration =
   fmap (fromInteger . fst) . headMay . parser . T.unpack
   where
     parser = readP_to_S (hhmmss <|> mmss)
